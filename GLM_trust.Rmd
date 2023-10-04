@@ -1,0 +1,496 @@
+---
+title: "Binary Logistic: Predicting Trust in Russia"
+author: "Victoria Bolotova"
+date: "22 04 2022"
+output: 
+    html_document:
+      theme: cosmo
+      code_folding: show
+      toc: true
+      toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Reading the data
+
+```{r}
+library(foreign)
+library(dplyr)
+wvs = read.spss("WV6_Russia (1).sav", to.data.frame = T, use.value.labels = T)
+var.labels <- attr(wvs, "variable.labels")
+dd <- data.frame(names(var.labels), var.labels) # Using this dataframe you can navigate through all the available variables.
+wvs <- wvs %>%
+  select(V24, V240, V248, V23, V242, V239, V223)
+wvs <- na.omit(wvs) # we have lost 306 observations, now we have 2194 observations
+wvs <- wvs %>% rename(
+  trust = V24, 
+  gender = V240, 
+  education = V248, 
+  life_satisfaction = V23, 
+  age = V242, 
+  income = V239,
+  internet = V223
+)
+```
+
+Let's look at the data
+
+```{r}
+glimpse(wvs)
+```
+
+# Data manipulations
+
+## Recoding trust
+
+Recode variable trust to make trust most people the higher category
+
+```{r}
+wvs$trust <- recode(wvs$trust, `Need to be very careful` = "0", `Most people can be trusted` = "1")
+```
+
+
+```{r}
+glimpse(wvs)
+```
+
+## Recoding the level of education 
+
+Recode the level of education into 3 meaningful categories
+
+```{r}
+levels(wvs$education)
+```
+
+```{r}
+library(forcats)
+wvs$education <- wvs$education %>% fct_collapse(primary = c("No formal education","Incomplete primary school", "Complete primary school", "Incomplete secondary school: technical/ vocational type"), secondary = c("Complete secondary school: university-preparatory type", "Complete secondary school: technical/ vocational type", "Incomplete secondary school: university-preparatory type"), tertiary = c("Some university-level education, without degree", "University - level education, with degree"))
+```
+
+```{r}
+levels(wvs$education)
+```
+
+## Converting into numeric
+
+Convert life satisfaction, age, and income into numeric variables
+
+```{r}
+wvs$life_satisfaction <- as.numeric(as.factor(wvs$life_satisfaction))
+wvs$age <- as.numeric(as.factor(wvs$age))
+wvs$income <- as.numeric(as.factor(wvs$income))
+```
+
+Convertion is successful! 
+
+## Recoding internet use
+
+Recode variable internet so that the lowest and highest categories correspond to the least  frequent and most frequent internet use respectively
+
+* lowest - never 
+* frequent - daily
+
+```{r}
+levels(wvs$internet)
+```
+
+```{r}
+wvs$internet <- recode(wvs$internet, Daily = "5", Weekly = "4", Monthly = "3", `Less than monthly` = "2", Never = "1")
+```
+
+```{r}
+levels(wvs$internet)
+```
+
+# Data presentation
+
+## Descriptive analysis
+
+### Trust
+
+```{r}
+library(ggplot2)
+trust_barplot  <- wvs %>% 
+  group_by(trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count)) 
+
+ggplot(trust_barplot, aes(x = as.factor(trust), y = percentage, fill = as.factor(trust))) + 
+  geom_bar(stat='identity') + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Trust others", 
+       y="",
+       title="Whether respondents trust others") +
+  scale_fill_manual("Gender", values = c('#99d98c', '#ffb5a7')) + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Only 29% of all respondents think that most people can be trusted
+* Most respondents (71%) think that people need to be very careful towards others
+
+### Gender 
+
+```{r}
+library(ggplot2)
+sex_barplot  <- wvs %>% 
+  group_by(gender) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count)) 
+
+ggplot(sex_barplot, aes(x = gender, y = percentage, fill = gender)) + 
+  geom_bar(stat='identity') + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="Gender", 
+       y="",
+       title="Gender distribution in data") +
+  scale_fill_manual("Gender", values = c('#c1d3fe', '#fec5bb')) + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* There are more females (56%) in the data, than males (44%).
+
+### Level of education
+
+```{r}
+education_barplot  <- wvs %>% 
+  group_by(education) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count)) 
+
+ggplot(education_barplot, aes(x = education, y = percentage, fill = education)) + 
+  geom_bar(stat='identity') + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Respondents' level of education") +
+  scale_fill_manual("Level of education", values = c('#e63946', '#ffb5a7', '#99d98c')) + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Most respondents have secondary education (62%), while tertiary education possess 32% of respondents, and only 6% of respondents have only primary education. 
+
+### Life satisfaction
+
+```{r}
+satisfaction_barplot  <- wvs %>% 
+  group_by(life_satisfaction) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(satisfaction_barplot, aes(x = life_satisfaction, y = percentage, fill = life_satisfaction)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Respondents' levels of life satisfaction") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* Most people reported average (5'th level - 19%) and higher than average levels (6th - 14%, 7th - 16%, 8 - 17%) of life satisfaction.
+* The most rare answers are 2, 1 and 3. 
+
+```{r}
+summary(wvs$life_satisfaction)
+```
+
+* The mean is 6.2 and median is 6.
+
+### Age
+
+```{r}
+library(ggplot2)
+ggplot(wvs, aes(age)) +
+  geom_histogram(fill = "#fcbf49", bins = 20) +
+  labs(title = "Respondents' age",
+       x = "Age", 
+       y = "") + 
+  scale_fill_manual("e9c46a") +
+  theme_classic()
+```
+
+
+```{r}
+summary(wvs$age)
+```
+
+* The average and median value for respondents' age is 30. 
+
+### Income level
+
+* 1 - lowest step
+* 10 - highest step
+
+```{r}
+income_barplot  <- wvs %>% 
+  group_by(income) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+ggplot(income_barplot, aes(x = income, y = percentage, fill = income)) + 
+  geom_bar(stat='identity', fill = "#fcbf49") + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Respondents' levels of income") + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* The sample includes people of average and lower than average income mainly (5th step - 25%)
+* The are only 6% of respondents of 7th step, only 3% of 8th step and smaller than 1% of respondents have income of 9th and 10th steps. 
+
+```{r}
+summary(wvs$income)
+```
+
+Yeah, as we saw in the barplot, the mean is 4.2 and median is 4.
+
+### Internet use 
+
+* 5 - Daily, 1 - Never
+
+```{r}
+internet_barplot  <- wvs %>% 
+  group_by(internet) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count)) 
+
+ggplot(internet_barplot, aes(x = internet, y = percentage, fill = internet)) + 
+  geom_bar(stat='identity') + 
+  geom_text(aes(label=scales::percent(percentage)), position = position_stack(vjust = .5)) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(x="", 
+       y="",
+       title="Respondents' frequency of use of internet as a source of information") +
+  scale_fill_manual("", values = c('#99d98c', '#b5e48c', '#ffb703', '#ffb5a7', '#e63946')) + 
+  theme_classic() + 
+  theme(legend.position="none")
+```
+
+* 31% of respondents use the Internet as a source of information daily
+* 12% of respondents use the Internet as a source of information weekly 
+* Only 4% of respondents use the Internet as a source of information monthly
+* Only 4% of respondents use the Internet as a source of information less than monthly
+* 47% of respondents never use the Internet as a source of information
+
+Well, most people use the Internet either daily or never. 
+
+## Visualization of the relationship between IV and the DV
+
+### Gender and trust 
+
+```{r}
+gender_trust_barplot  <- wvs %>% 
+  group_by(gender, trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+
+ggplot(gender_trust_barplot, aes(x = gender, y = percentage, fill =  trust)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Propensity to trust others for males and females", x = "Gender", y = " ") + 
+   scale_fill_manual("Trust", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* There is approximately no difference between males and females in their trust towards others
+* Females slightly more prone to trust others (70.2 vs 29.8), compared to males (71.5 vs 28.5), but it is unlikely that the difference will be statistically significant as it is very small. 
+
+### Education and trust
+
+```{r}
+education_trust_barplot  <- wvs %>% 
+  group_by(education, trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+
+ggplot(education_trust_barplot, aes(x = education, y = percentage, fill =  trust)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Propensity to trust others depending on education level", x = "Level of education", y = " ") + 
+   scale_fill_manual("Trust", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* People with primary education more prone to be very careful in trusting others, compared to people with secondary and tertiary education. Among those with tertiary education there are more people who trust others. But the difference between people with different levels of education is not big.
+
+### Life satisfaction and trust
+
+```{r fig.width=12, fig.height= 6}
+lifesatisfaction_trust_barplot  <- wvs %>% 
+  group_by(life_satisfaction, trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(lifesatisfaction_trust_barplot, aes(x = life_satisfaction, y = percentage, fill =  trust)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Propensity to trust others depending on life satisfaction", x = " ", y = " ") + 
+   scale_fill_manual("Trust", values = c('#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* There are more people who trust others among those who are moderately and highly satisfied with their life, compared to people who reported low levels of life satisfaction. From the barplot we see that the percentage of those who trust others is increasing with increase in life satisfaction. 
+
+### Age and trust
+
+```{r}
+ggplot(wvs, aes(x = age, fill = trust)) +
+      geom_histogram(aes(y=..density..), 
+                     position = "identity", 
+                     bins = 10) +
+  facet_wrap(~ trust) +
+  labs(title = "Propensity to trust others depending on age", x = "Age", y = ' ') + 
+  scale_fill_manual("Trust others",values = c('#99d98c', '#ffb5a7')) +
+  theme_classic()
+```
+
+* As we see, age does not affect a person's trust towards others.
+
+### Income and trust
+
+```{r fig.width=12, fig.height= 6}
+income_trust_barplot  <- wvs %>% 
+  group_by(income, trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = round(count/sum(count),2))
+
+
+ggplot(income_trust_barplot, aes(x = income, y = percentage, fill =  trust)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Propensity to trust others depending on income step", x = " ", y = " ") + 
+   scale_fill_manual("Trust", values = c('#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946', '#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* From the bar plot we see that the percentage of those who trust others is increasing with increase in income. 
+* The lowest percentages of those who trust others are among people who are at first stages of income. 
+
+### Internet usage and trust
+
+* 5 - Daily
+* 1 - Never
+
+```{r}
+internet_trust_barplot  <- wvs %>% 
+  group_by(internet, trust) %>% 
+ dplyr::summarize(count = n()) %>%  
+ mutate(percentage = count/sum(count))
+
+
+ggplot(internet_trust_barplot, aes(x = internet, y = percentage, fill =  trust)) +
+  geom_bar(position = "dodge", stat="identity", alpha = 0.7) +
+   labs(title = "Propensity to trust others depending on use of internet as a source of information", x = "Levels of Internet usage", y = " ") + 
+   scale_fill_manual("Trust", values = c('#99d98c', '#e63946')) +
+geom_text(aes(label=scales::percent(percentage)), position = position_dodge(width=0.9), vjust=-0.25) + 
+  scale_y_continuous(labels = scales::percent) +
+theme_classic()
+```
+
+* The highest percentage of those who trust others (37%) is among people who use Internet as a source of information less than monthly. The lowest percentage of people who trust others (26%) is among those who never use the Internet as a source of information. 
+
+# Modelling
+
+## Estimate a logit model
+
+Now I change baseline of a dependent variable. 
+
+```{r}
+wvs$trust <- relevel(wvs$trust, ref = "0")
+```
+
+```{r}
+model_1 <- glm(trust ~ gender + age + education + income + life_satisfaction + internet, family = binomial(link = logit), data = wvs)
+summary(model_1)
+```
+
+## Interpret the coefficients
+
+* Gender of a person do not affect the probability of trust towards other people.
+* Age of a person also do not affect the probability of trust towards other people.
+* And level of education do not affect the probability of trust towards other people.
+* Income: the log of odds ratio of trusting others over not trusting others increases by 0.08 with each income step. 
+* Life satisfaction: the log of odds ratio of trusting others over not trusting others increases by 0.09 with each unit increase in life satisfaction. 
+* Frequency of Internet use as a source of information:
+- Russian people who use Internet as a source of information weekly (4) do not significantly differ from those who use Internet daily (5) in the probability to trust others.
+- Russian people who use Internet as a source of information monthly (3) do not significantly differ from those who use Internet daily (5) in the probability to trust others.
+- The log of odds ratio of trusting others over not trusting others is higher by 0.44 for those who use the Internet less than monthly (2) compared to those who use Internet daily (5) in the probability to trust others. But p-value is 0.05.
+- Russian people who never use Internet as a source of information (1) do not significantly differ from those who use Internet daily (5) in the probability to trust others.
+
+
+## Interpret the odds ratio
+
+```{r}
+library(sjPlot)
+labs = c("Constant", "Gender (Female)", "Age",
+"Education (Secondary)", "Education (Tertiary)", "Income","Life satisfaction", "Internet(4)", "Internet(3)", "Internet(2)", "Internet(1)")
+tab_model(model_1, pred.labels = labs, dv.labels = "Trusting others")
+```
+
+I should interpret only variables that have statistically significant effect.
+
+* Income: the odds of trusting others increases by 9% with each income step.
+* Life satisfaction: the odds of trusting others increases by 10% with each unit increase in life satisfaction.
+* Internet2: the odds of trusting others are higher by 55% for those who use the Internet less than monthly (2) compared to those who use Internet daily (5). 
+
+## Interpret the model fit.
+
+```{r}
+library(DescTools)
+PseudoR2(model_1)
+```
+
+* McFadden's pseudo R-squared value equals to 0.02, which indicates poor fit. 
+* Independent variables in the model do not explain much in the variation of probability of trust, even though some of them are significant.
+
+```{r}
+library(pscl)
+hitmiss(model_1)
+```
+
+* The model cannot correctly identify those, who trust others. The model predicted that no one trust others in Russia (except for one incorrectly identified observation), but this is not true. 
+
+## Visualize the significant effects and comment on the results. 
+
+### Life satisfaction
+
+```{r}
+library(jtools)
+effect_plot(model_1, pred = life_satisfaction)
+```
+
+* From the plow we see that with each increase in life satisfaction the probability of trust towards others increases from 15% to 30%.
+
+### Income
+
+```{r}
+effect_plot(model_1, pred = income)
+```
+
+* From the plow we see that with each increase in income the probability of trust towards others increases from 18% to 33%.
+
+```{r}
+effect_plot(model_1, pred = internet)
+```
+
+* This plot shows that people who use the Internet less than monthly (2) have higher probability to trust others. 
